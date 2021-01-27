@@ -8,7 +8,7 @@ system running inside Kubernetes using **statefulsets**.
 Add this dependency to your `rebar3.config`:
 
 ```
-{cluster, {git, "https://github.com/pedro-gutierrez/cluster", {branch, "main"}
+{cluster, {git, "https://github.com/pedro-gutierrez/cluster", {tag, "0.1.0"}
 ```
 
 Then make sure the `cluster` app is part of your release.
@@ -94,7 +94,7 @@ The following Prometheus metrics are exposed at path `/metrics`:
 - [x] Detects network partitions
 - [ ] Custom conflict resolution 
 - [x] Both `automatic` and `manual` netplit recovery modes
-- [ ] Exports Prometheus metrics
+- [x] Exports Prometheus metrics
 - [x] Cluster management via REST
 - [x] Key-Value store subscriptions
 
