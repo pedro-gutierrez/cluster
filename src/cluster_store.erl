@@ -65,11 +65,14 @@ init_store(true, _) ->
                                 [{type, set},
                                  {attributes, record_info(fields, cluster_items)},
                                  {ram_copies, AllNodes}]),
+
+            lager:notice("CLUSTER STORE waiting for ~p to be ready..." , [?TAB_NAME]),
+            ok = mnesia:wait_for_tables([cluster_items], 5000),
             mnesia:write_table_property(kvs, {reunion_compare, {reunion_lib, last_modified, []}}),
             {ok, _} = subscribe_tab(cluster_items, 5),
-            lager:notice("CLUSTER created and subscribed to table ~p", [?TAB_NAME]);
+            lager:notice("CLUSTER STORE created and subscribed to table ~p", [?TAB_NAME]);
         true ->
-            lager:notice("CLUSTER table ~p already exists", [?TAB_NAME])
+            lager:notice("CLUSTER STORE table ~p already exists", [?TAB_NAME])
     end;
 init_store(false, green) ->
     mnesia:add_table_copy(cluster_items, node(), ram_copies);
