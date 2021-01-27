@@ -66,8 +66,8 @@ init_store(true, _) ->
                                  {attributes, record_info(fields, cluster_items)},
                                  {ram_copies, AllNodes}]),
             mnesia:write_table_property(kvs, {reunion_compare, {reunion_lib, last_modified, []}}),
-            {ok, _} = mnesia:subscribe({table, cluster_items, simple}),
-            lager:notice("CLUSTER created table ~p", [?TAB_NAME]);
+            {ok, _} = subscribe_tab(cluster_items, 5),
+            lager:notice("CLUSTER created and subscribed to table ~p", [?TAB_NAME]);
         true ->
             lager:notice("CLUSTER table ~p already exists", [?TAB_NAME])
     end;
@@ -75,6 +75,22 @@ init_store(false, green) ->
     mnesia:add_table_copy(cluster_items, node(), ram_copies);
 init_store(_, _) ->
     ok.
+
+
+subscribe_tab(_, 0) ->
+    {error, error_subscribing};
+
+subscribe_tab(Tab, RetriesLeft) ->
+    case mnesia:subscribe({table, Tab, simple}) of
+        {error, {not_active_local, Tab}} ->
+            %% Set up RAM replica on this node, and then try one more time
+            mnesia:add_table_copy(Tab, node(), ram_copies),
+            subscribe_tab(Tab, RetriesLeft-1);
+        {error, _} = Other -> 
+            Other;
+
+        {ok, _} = Ok -> Ok
+    end.
 
 write(Key, Value) ->
     write(#cluster_items{key = Key, data = Value}).
