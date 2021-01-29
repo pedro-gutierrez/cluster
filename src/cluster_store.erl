@@ -59,8 +59,11 @@ maybe_init_store() ->
 init_store(true, _) ->
     case is_ready() of
         false ->
+            lager:notice("CLUSTER STORE initializing store..."),
             AllNodes = cluster:members(),
             mnesia:change_config(extra_db_nodes, AllNodes),
+            lager:notice("CLUSTER STORE creating table ~p...", [?TAB_NAME]),
+
             mnesia:create_table(cluster_items,
                                 [{type, set},
                                  {attributes, record_info(fields, cluster_items)},
