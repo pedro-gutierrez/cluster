@@ -7,6 +7,7 @@
 -define(TEST_TIMEOUT, 300).
 -define(DEFAULT_ENDPOINT, "https://cluster-pedro-gutierrez.cloud.okteto.net").
 -define(KEYS_TO_WRITE, 50).
+-define(KEYS_TO_DELETE, 10).
 
 endpoint() ->
     case os:getenv("TEST_ENDPOINT") of
@@ -23,7 +24,8 @@ cluster_test_() ->
         test_halt_host(),
         test_disconnect_host(),
         test_netsplit_manual_recovery(),
-        test_netsplit_automatic_recovery()
+        test_netsplit_automatic_recovery(),
+        test_delete_key()
      end}.
 
 test_halt_host() ->
@@ -84,6 +86,26 @@ test_netsplit_automatic_recovery() ->
     write_keys("b", ?KEYS_TO_WRITE),
     set_cluster_recovery("auto"),
     assert_store_size(2 * ?KEYS_TO_WRITE).
+
+
+test_delete_key() ->
+    print("~n== TEST test_delete_key()"),
+    setup(),
+    assert_cluster_state(<<"green">>),
+    Hosts = cluster_hosts(),
+    assert_active_replicas(length(Hosts)),
+    set_cluster_recovery("manual"),
+    delete_all_keys(),
+    assert_store_size(0),
+    write_keys("a", ?KEYS_TO_DELETE),
+    assert_store_size(?KEYS_TO_DELETE),
+    disconnect_hosts_and_wait_for_cluster_state(Hosts, <<"red">>),
+    assert_store_size(?KEYS_TO_DELETE),
+    delete_keys("a", ?KEYS_TO_DELETE),
+    set_cluster_recovery("auto"),
+    assert_store_size(0).
+
+
 
 assert_cluster_state(State) ->
     print("asserting cluster state ~p", [State]),
@@ -250,6 +272,43 @@ do_write_key(K, V) ->
     Url = url("/keys/key" ++ K),
     Resp = http(put, Url, [], V),
     Resp.
+
+delete_keys(Prefix, N) ->
+    BatchSize = 10,
+    NumberOfBatches = floor(N / BatchSize),
+    print("deleting ~p keys with prefix ~p in ~p batches of ~p",
+          [N, Prefix, NumberOfBatches, BatchSize]),
+    retry(fun() -> delete_key_batches(Prefix, BatchSize, NumberOfBatches) end,
+          <<"could not delete keys">>).
+
+delete_key_batches(_, _, 0) ->
+    ok;
+delete_key_batches(Prefix, BatchSize, BatchNumber) ->
+    progress(),
+    delete_key_batch(Prefix, BatchSize, BatchNumber),
+    timer:sleep(1000),
+    delete_key_batches(Prefix, BatchSize, BatchNumber - 1).
+
+delete_key_batch(Prefix, BatchSize, BatchNumber) ->
+    To = BatchNumber * BatchSize,
+    From = (BatchNumber - 1) * BatchSize + 1,
+    delete_keys(Prefix, From, To).
+
+delete_keys(Prefix, From, To) ->
+    print("deleting batch ~p -> ~p", [From, To]),
+    Keys = lists:seq(From, To),
+    lists:foreach(fun(I) ->
+                     K = Prefix ++ erlang:integer_to_list(I),
+                     {ok, #{status := 200}} = do_delete_key(K)
+                  end,
+                  Keys).
+
+do_delete_key(K) ->
+    Url = url("/keys/key" ++ K),
+    Resp = http(delete, Url),
+    Resp.
+
+
 
 set_cluster_recovery(Recovery) ->
     print("setting cluster recovery to ~p", [Recovery]),

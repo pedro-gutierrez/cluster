@@ -4,8 +4,8 @@
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
--export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, info/0, purge/0, observers/0,
-         subscribe/1, unsubscribe/1]).
+-export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, info/0, purge/0,
+         observers/0, subscribe/1, unsubscribe/1]).
 
 -define(TAB_NAME, cluster_items).
 
@@ -74,7 +74,7 @@ init_store(true, _) ->
                                  {attributes, record_info(fields, cluster_items)},
                                  {ram_copies, AllNodes}]),
 
-            lager:notice("CLUSTER STORE waiting for ~p to be ready..." , [?TAB_NAME]),
+            lager:notice("CLUSTER STORE waiting for ~p to be ready...", [?TAB_NAME]),
             ok = mnesia:wait_for_tables([cluster_items], 5000),
             mnesia:write_table_property(kvs, {reunion_compare, {reunion_lib, last_modified, []}}),
             {ok, _} = subscribe_tab(cluster_items, 5),
@@ -87,20 +87,18 @@ init_store(false, green) ->
 init_store(_, _) ->
     ok.
 
-
 subscribe_tab(_, 0) ->
     {error, error_subscribing};
-
 subscribe_tab(Tab, RetriesLeft) ->
     case mnesia:subscribe({table, Tab, simple}) of
         {error, {not_active_local, Tab}} ->
             %% Set up RAM replica on this node, and then try one more time
             mnesia:add_table_copy(Tab, node(), ram_copies),
-            subscribe_tab(Tab, RetriesLeft-1);
-        {error, _} = Other -> 
+            subscribe_tab(Tab, RetriesLeft - 1);
+        {error, _} = Other ->
             Other;
-
-        {ok, _} = Ok -> Ok
+        {ok, _} = Ok ->
+            Ok
     end.
 
 write(Key, Value) ->
@@ -121,7 +119,10 @@ read(Key) ->
 delete(Key) ->
     mnesia:activity(transaction,
                     fun() ->
-                            ok = mnesia:delete(cluster_items, Key, write)
+                       case mnesia:read({cluster_items, Key}) of
+                           [] -> {error, not_found};
+                           [_ | _] -> mnesia:delete(cluster_items, Key, write)
+                       end
                     end).
 
 info() ->

@@ -14,6 +14,13 @@ do(<<"GET">>, Key, Req) ->
         {error, not_found} ->
             cluster_http:not_found(#{key => Key}, Req)
     end;
+do(<<"DELETE">>, Key, Req) ->
+    case cluster_store:delete(Key) of
+        ok ->
+            cluster_http:ok(#{key => Key}, Req);
+        {error, not_found} ->
+            cluster_http:not_found(#{key => Key}, Req)
+    end;
 do(<<"PUT">>, Key, Req) ->
     {ok, Data, Req2} = cowboy_req:body(Req),
     ok = cluster_store:write(Key, Data),
