@@ -28,6 +28,13 @@ To read a key:
 2> {ok, <<"bar">>} = cluster_store:read(<<"foo">>).
 ```
 
+To delete a key:
+
+```erlang
+3> ok = cluster_store:delete(<<"foo">>).
+```
+
+
 ## Subscribing to store updates
 
 It is possible to get notified when a new key has been written to the store:
@@ -37,6 +44,9 @@ It is possible to get notified when a new key has been written to the store:
 2> cluster_store:write(<<"foo">>, <<"bar">>).
 3> flush().
 Shell got {cluster_store,written,<<"foo">>,<<"bar">>}
+4> cluster_store:delete(<<"foo">>).
+5> flust().
+Shell got {cluster_store,deleted,<<"foo">>,undefined}
 ```
 
 If you are no longer interested in receving updates, then you call `cluster_store:unsubscribe/1`
@@ -69,7 +79,7 @@ cluster size might be supported.
 
 ## Monitoring
 
-The following Prometheus metrics are exposed at path `/metrics`:
+The following Prometheus metrics are exposed at `http://localhost:8080/metrics`:
 
 | Name | Kind | Help |
 | --- | --- | --- | 
