@@ -4,7 +4,7 @@
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
--export([maybe_init_store/0, is_ready/0, write/2, read/1, info/0, purge/0, observers/0,
+-export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, info/0, purge/0, observers/0,
          subscribe/1, unsubscribe/1]).
 
 -define(TAB_NAME, cluster_items).
@@ -34,7 +34,12 @@ handle_info({mnesia_system_event, {inconsistent_database, Context, Node}}, State
 handle_info({mnesia_table_event, {write, {cluster_items, K, V}, _}}, State) ->
     Size = table_info(cluster_items, size),
     cluster_metrics:set(cluster_store_size, Size),
-    notify_local_observers(K, V),
+    notify_local_observers(written, K, V),
+    {noreply, State};
+handle_info({mnesia_table_event, {delete, {cluster_items, K}, _}}, State) ->
+    Size = table_info(cluster_items, size),
+    cluster_metrics:set(cluster_store_size, Size),
+    notify_local_observers(deleted, K, undefined),
     {noreply, State};
 handle_info(Other, State) ->
     lager:notice("CLUSTER store ignoring ~p", [Other]),
@@ -113,6 +118,12 @@ read(Key) ->
                        end
                     end).
 
+delete(Key) ->
+    mnesia:activity(transaction,
+                    fun() ->
+                            ok = mnesia:delete(cluster_items, Key, write)
+                    end).
+
 info() ->
     Size = table_info(cluster_items, size),
     ActiveReplicas = table_info(cluster_items, active_replicas),
@@ -152,10 +163,10 @@ unsubscribe(Pid) ->
 observers() ->
     pg2:get_members(cluster_store_events).
 
-notify_local_observers(K, V) ->
+notify_local_observers(Event, K, V) ->
     LocalMembers = pg2:get_local_members(cluster_store_events),
     lager:notice("CLUSTER store notifying ~p observers", [length(LocalMembers)]),
-    [Pid ! {cluster_store, written, K, V} || Pid <- LocalMembers].
+    [Pid ! {cluster_store, Event, K, V} || Pid <- LocalMembers].
 
 is_ready() ->
     case table_info(cluster_items, active_replicas) of
