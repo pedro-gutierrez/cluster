@@ -85,8 +85,8 @@ test_netsplit_automatic_recovery() ->
     assert_store_size(?KEYS_TO_WRITE),
     write_keys("b", ?KEYS_TO_WRITE),
     set_cluster_recovery("auto"),
+    assert_cluster_state(<<"green">>),
     assert_store_size(2 * ?KEYS_TO_WRITE).
-
 
 test_delete_key() ->
     print("~n== TEST test_delete_key()"),
@@ -103,9 +103,8 @@ test_delete_key() ->
     assert_store_size(?KEYS_TO_DELETE),
     delete_keys("a", ?KEYS_TO_DELETE),
     set_cluster_recovery("auto"),
+    assert_cluster_state(<<"green">>),
     assert_store_size(0).
-
-
 
 assert_cluster_state(State) ->
     print("asserting cluster state ~p", [State]),
@@ -307,8 +306,6 @@ do_delete_key(K) ->
     Url = url("/keys/key" ++ K),
     Resp = http(delete, Url),
     Resp.
-
-
 
 set_cluster_recovery(Recovery) ->
     print("setting cluster recovery to ~p", [Recovery]),
