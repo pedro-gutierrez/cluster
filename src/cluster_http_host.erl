@@ -8,10 +8,10 @@ init(Req, _) ->
     do(Method, Host, Req).
 
 do(<<"POST">>, Host, Req) ->
-    host(join, cluster_http:node(Host), Host, Req);
+    host(join, cluster:node(Host), Host, Req);
 do(<<"DELETE">>, Host, Req) ->
     Mode = leave_mode(Req),
-    host(Mode, cluster_http:node(Host), Host, Req).
+    host(Mode, cluster:node(Host), Host, Req).
 
 host(_, unknown, Host, Req) ->
     cluster_http:not_found(#{host => Host}, Req);
