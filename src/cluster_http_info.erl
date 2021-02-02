@@ -10,7 +10,7 @@ do(<<"GET">>, Req) ->
     Leader =
         cluster_http:host(
             cluster:leader()),
-    Hosts = cluster_http:hosts([node() | nodes()]),
+    Hosts = cluster:hosts([node() | nodes()]),
 
     cluster_http:ok(#{recovery => cluster:recovery(),
                       state => cluster:state(),

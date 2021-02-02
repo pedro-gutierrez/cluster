@@ -132,9 +132,9 @@ info() ->
     RamCopies = table_info(cluster_items, ram_copies),
 
     #{size => Size,
-      ram_copies => cluster_http:hosts(RamCopies),
+      ram_copies => cluster:hosts(RamCopies),
       replicas =>
-          #{all => cluster_http:hosts(AllReplicas), active => cluster_http:hosts(ActiveReplicas)}}.
+          #{all => cluster:hosts(AllReplicas), active => cluster:hosts(ActiveReplicas)}}.
 
 table_info(Tab, Kind) ->
     try

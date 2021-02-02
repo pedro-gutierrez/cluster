@@ -2,7 +2,7 @@
 
 -export([members/0, start/0, join/1, state/0, state/1, neighbours/0, leader/0,
          is_leader/0, http_port/0, size/0, service/0, namespace/0, join/0, leave/1, env/1,
-         set_recovery/1, recovery/0, notify_observers/1, observers/0]).
+         set_recovery/1, recovery/0, notify_observers/1, observers/0, host/0, host/1, hosts/1, node/1]).
 
 state() ->
     state(neighbours()).
@@ -73,7 +73,7 @@ leader() ->
         undefined ->
             none;
         Pid ->
-            node(Pid)
+            cluster:node(Pid)
     end.
 
 is_leader() ->
@@ -108,3 +108,35 @@ notify_observers(Event) ->
 
 observers() ->
     pg2:get_members(cluster_events).
+
+host() ->
+    host(node()).
+
+host(Node0) ->
+    Node = erlang:atom_to_binary(Node0, latin1),
+    [_, Fqdn] = binary:split(Node, <<"@">>),
+    [Host, _] = binary:split(Fqdn, <<".">>),
+    Host.
+
+hosts(Nodes) ->
+    lists:map(fun host/1, Nodes).
+
+node(Host) ->
+    Service = cluster:service(),
+    Ns = cluster:namespace(),
+    Node =
+        <<Service/binary,
+          "@",
+          Host/binary,
+          ".",
+          Service/binary,
+          ".",
+          Ns/binary,
+          ".svc.cluster.local">>,
+    try
+        erlang:list_to_existing_atom(
+            erlang:binary_to_list(Node))
+    catch
+        _:_ ->
+            unknown
+    end.
