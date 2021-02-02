@@ -8,7 +8,7 @@ init(Req, _) ->
 
 do(<<"GET">>, Req) ->
     Leader =
-        cluster_http:host(
+        cluster:host(
             cluster:leader()),
     Hosts = cluster:hosts([node() | nodes()]),
 
