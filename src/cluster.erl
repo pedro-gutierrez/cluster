@@ -73,7 +73,7 @@ leader() ->
         undefined ->
             none;
         Pid ->
-            cluster:node(Pid)
+            erlang:node(Pid)
     end.
 
 is_leader() ->
