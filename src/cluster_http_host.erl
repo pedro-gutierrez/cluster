@@ -15,20 +15,22 @@ do(<<"DELETE">>, Host, Req) ->
 
 host(_, unknown, Host, Req) ->
     cluster_http:not_found(#{host => Host}, Req);
-host(join, Node, Host, Req) ->
+host(join, Node, _, Req) ->
     rpc:call(Node, cluster, join, []),
-    cluster_http:ok(#{join => Host}, Req);
-host(leave, Node, Host, Req) ->
-    rpc:eval_everywhere(cluster, leave, [normal]),
-    lager:notice("CLUSTER command for ~p to leave the cluster", [Node]),
+    Info = cluster_http_info:info(),
+    cluster_http:ok(Info, Req);
+host(leave, _, _, Req) ->
+    cluster:leave(normal),
     lager:notice("CLUSTER nodes after leaving cluster: ~p", [nodes()]),
-    cluster_http:ok(#{disconnect => Host}, Req);
-host(halt, Node, Host, Req) ->
+    Info = cluster_http_info:info(),
+    cluster_http:ok(Info, Req);
+host(halt, Node, _, Req) ->
     rpc:async_call(Node, cluster, leave, [halt]),
-    cluster_http:ok(#{halt => Host}, Req).
+    Info = cluster_http_info:info(),
+    cluster_http:ok(Info, Req).
 
 leave_mode(Req) ->
-    case cowboy_req:match_qs([mode], Req) of
+    case cowboy_req:match_qs([{mode, [], <<"halt">>}], Req) of
         #{mode := <<"halt">>} ->
             halt;
         _ ->

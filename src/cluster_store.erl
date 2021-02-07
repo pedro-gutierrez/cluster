@@ -4,9 +4,10 @@
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
--export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, info/0, purge/0,
-         observers/0, subscribe/1, unsubscribe/1]).
+-export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, size/0, info/0,
+         purge/0, dump/0, foreach/1, observers/0, subscribe/1, unsubscribe/1, set_reconnect_method/1]).
 
+-define(DEFAULT_RECONNECT_SECONDS, 60).
 -define(TAB_NAME, cluster_items).
 
 -record(cluster_items, {key, data}).
@@ -30,6 +31,16 @@ handle_info({cluster, nodes_changed}, State) ->
 handle_info({mnesia_system_event, {inconsistent_database, Context, Node}}, State) ->
     cluster_metrics:inc(cluster_store_partitions),
     lager:notice("CLUSTER store netsplit detected by Mnesia: ~p, ~p", [Context, Node]),
+    {noreply, State};
+handle_info({mnesia_system_event, {mnesia_down, Node}}, State) ->
+    cluster_metrics:inc(cluster_store_disconnections),
+    notify_local_observers(disconnected),
+    lager:notice("CLUSTER store disconnected from ~p", [Node]),
+    {noreply, State};
+handle_info({mnesia_system_event, {mnesia_up, Node}}, State) ->
+    cluster_metrics:inc(cluster_store_connections),
+    notify_local_observers(connected),
+    lager:notice("CLUSTER store connected to ~p", [Node]),
     {noreply, State};
 handle_info({mnesia_table_event, {write, {cluster_items, K, V}, _}}, State) ->
     Size = table_info(cluster_items, size),
@@ -76,14 +87,24 @@ init_store(true, _) ->
 
             lager:notice("CLUSTER STORE waiting for ~p to be ready...", [?TAB_NAME]),
             ok = mnesia:wait_for_tables([cluster_items], 5000),
-            mnesia:write_table_property(kvs, {reunion_compare, {reunion_lib, last_modified, []}}),
+
+            ConflictResolutionStrategy = conflict_resolution_strategy(),
+            lager:notice("CLUSTER store using conflict resolution: ~p", [ConflictResolutionStrategy]),
+            mnesia:write_table_property(kvs, {reunion_compare, ConflictResolutionStrategy}),
             {ok, _} = subscribe_tab(cluster_items, 5),
             lager:notice("CLUSTER STORE created and subscribed to table ~p", [?TAB_NAME]);
         true ->
             lager:notice("CLUSTER STORE table ~p already exists", [?TAB_NAME])
     end;
 init_store(false, green) ->
-    mnesia:add_table_copy(cluster_items, node(), ram_copies);
+    lager:notice("CLUSTER store adding table copy"),
+    case mnesia:add_table_copy(cluster_items, node(), ram_copies) of 
+        {aborted,{already_exists, _, _ }} ->
+            ok;
+        ok ->
+            ok
+    end,
+    notify_local_observers(joined);
 init_store(_, _) ->
     ok.
 
@@ -125,13 +146,15 @@ delete(Key) ->
                        end
                     end).
 
+size() ->
+    table_info(cluster_items, size).
+
 info() ->
-    Size = table_info(cluster_items, size),
     ActiveReplicas = table_info(cluster_items, active_replicas),
     AllReplicas = table_info(cluster_items, all_nodes),
     RamCopies = table_info(cluster_items, ram_copies),
 
-    #{size => Size,
+    #{size => size(),
       ram_copies => cluster:hosts(RamCopies),
       replicas =>
           #{all => cluster:hosts(AllReplicas), active => cluster:hosts(ActiveReplicas)}}.
@@ -147,6 +170,22 @@ table_info(Tab, Kind) ->
 purge() ->
     {atomic, ok} = mnesia:clear_table(cluster_items),
     ok.
+
+foreach(UserFun) ->
+    foreach(UserFun, {0, 0}, mnesia:dirty_first(cluster_items)).
+
+foreach(_UserFun, Acc, '$end_of_table') ->
+    Acc;
+foreach(UserFun, {Total, Failed}, Key) ->
+    [#cluster_items{key = Key, data = Value}] = mnesia:dirty_read(cluster_items, Key),
+    case UserFun(Key, Value) of
+        ok ->
+            foreach(UserFun, {Total + 1, Failed}, mnesia:dirty_next(cluster_items, Key));
+        {ok, _} ->
+            foreach(UserFun, {Total + 1, Failed}, mnesia:dirty_next(cluster_items, Key));
+        _ ->
+            foreach(UserFun, {Total, Failed + 1}, mnesia:dirty_next(cluster_items, Key))
+    end.
 
 subscribe(Pid) ->
     case lists:member(Pid, observers()) of
@@ -164,9 +203,14 @@ unsubscribe(Pid) ->
 observers() ->
     pg2:get_members(cluster_store_events).
 
+notify_local_observers(Event) ->
+    LocalMembers = pg2:get_local_members(cluster_store_events),
+    lager:notice("CLUSTER store notifying ~p observers: ~p", [length(LocalMembers), Event]),
+    [Pid ! {cluster_store, Event} || Pid <- LocalMembers].
+
 notify_local_observers(Event, K, V) ->
     LocalMembers = pg2:get_local_members(cluster_store_events),
-    lager:notice("CLUSTER store notifying ~p observers", [length(LocalMembers)]),
+    lager:notice("CLUSTER store notifying ~p observers: ~p", [length(LocalMembers), Event]),
     [Pid ! {cluster_store, Event, K, V} || Pid <- LocalMembers].
 
 is_ready() ->
@@ -176,3 +220,20 @@ is_ready() ->
         _ ->
             true
     end.
+
+dump() ->
+    foreach(fun(K, V) ->
+                    lager:notice("CLUSTER store dumping ~p => ~p", [K, V]),
+                    ok
+            end).
+
+set_reconnect_method(manual) ->
+    lager:notice("CLUSTER store disabled automatic reconnects"),
+    application:set_env(reunion, reconnect, never);
+
+set_reconnect_method(auto) ->
+    lager:notice("CLUSTER store enabled automatic reconnects"),
+    application:set_env(reunion, reconnect, ?DEFAULT_RECONNECT_SECONDS).
+
+conflict_resolution_strategy() ->
+    {reunion_lib, last_modified, []}.

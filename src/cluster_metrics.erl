@@ -19,6 +19,10 @@ register_metrics() ->
     prometheus_gauge:new([{name, cluster_store_size}, {help, "size of the cluster store"}]),
     prometheus_counter:new([{name, cluster_store_partitions},
                             {help, "total number of the cluster store partitions"}]),
+    prometheus_counter:new([{name, cluster_store_connections},
+                            {help, "total number of connections between cluster stores"}]),
+    prometheus_counter:new([{name, cluster_store_disconnections},
+                            {help, "total number of disconnections between cluster stores"}]),
     prometheus_counter:new([{name, cluster_leader_elections},
                             {help, "total number of leader elections"}]),
 

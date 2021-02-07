@@ -73,6 +73,7 @@ handle_cast(_, State) ->
 
 handle_call({set_recovery, Recovery}, _, State) ->
     State2 = State#{recovery => Recovery},
+    cluster_store:set_reconnect_method(Recovery),
     lager:notice("CLUSTER recovery is set to ~p", [Recovery]),
     reconnect_nodes(State2),
     {reply, ok, State2};
