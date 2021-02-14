@@ -5,7 +5,7 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 -export([maybe_init_store/0, is_ready/0, write/2, read/1, delete/1, size/0, info/0,
-         purge/0, dump/0, foreach/1, observers/0, subscribe/1, unsubscribe/1, set_reconnect_method/1]).
+         purge/0, dump/0, foldl/2, foreach/1, observers/0, subscribe/1, unsubscribe/1, set_reconnect_method/1]).
 
 -define(DEFAULT_RECONNECT_SECONDS, 60).
 -define(TAB_NAME, cluster_items).
@@ -39,8 +39,14 @@ handle_info({mnesia_system_event, {mnesia_down, Node}}, State) ->
     {noreply, State};
 handle_info({mnesia_system_event, {mnesia_up, Node}}, State) ->
     cluster_metrics:inc(cluster_store_connections),
-    notify_local_observers(connected),
-    lager:notice("CLUSTER store connected to ~p", [Node]),
+    case cluster:is_disconnecting() of
+        false ->
+            lager:notice("CLUSTER store connected to ~p", [Node]),
+            notify_local_observers(connected);
+
+        true ->
+            lager:notice("CLUSTER store connect to ~p but we are leaving the cluster. Won't notify observers", [Node])
+    end,
     {noreply, State};
 handle_info({mnesia_table_event, {write, {cluster_items, K, V}, _}}, State) ->
     Size = table_info(cluster_items, size),
@@ -98,15 +104,23 @@ init_store(true, _) ->
     end;
 init_store(false, green) ->
     lager:notice("CLUSTER store adding table copy"),
+
     case mnesia:add_table_copy(cluster_items, node(), ram_copies) of 
         {aborted,{already_exists, _, _ }} ->
             ok;
+        {aborted,{no_exists, _, _}} ->
+            lager:notice("CLUSTER STORE follower is joining, but store is not initialized yet"),
+            init_store(true, green);
         ok ->
             ok
     end,
     notify_local_observers(joined);
 init_store(_, _) ->
     ok.
+
+
+
+
 
 subscribe_tab(_, 0) ->
     {error, error_subscribing};
@@ -171,21 +185,31 @@ purge() ->
     {atomic, ok} = mnesia:clear_table(cluster_items),
     ok.
 
-foreach(UserFun) ->
-    foreach(UserFun, {0, 0}, mnesia:dirty_first(cluster_items)).
+foldl(UserFun, Acc) ->
+    foldl(UserFun, Acc,  mnesia:dirty_first(cluster_items)).
 
-foreach(_UserFun, Acc, '$end_of_table') ->
+foldl(_, Acc, '$end_of_table') ->
     Acc;
-foreach(UserFun, {Total, Failed}, Key) ->
+
+foldl(UserFun, Acc, Key) ->
     [#cluster_items{key = Key, data = Value}] = mnesia:dirty_read(cluster_items, Key),
-    case UserFun(Key, Value) of
-        ok ->
-            foreach(UserFun, {Total + 1, Failed}, mnesia:dirty_next(cluster_items, Key));
-        {ok, _} ->
-            foreach(UserFun, {Total + 1, Failed}, mnesia:dirty_next(cluster_items, Key));
-        _ ->
-            foreach(UserFun, {Total, Failed + 1}, mnesia:dirty_next(cluster_items, Key))
-    end.
+    Acc2 = UserFun({Key, Value}, Acc),
+    foldl(UserFun, Acc2, mnesia:dirty_next(cluster_items, Key)).
+
+foreach(UserFun) ->
+    foldl(fun({K, V}, {Total, Failed}) ->
+                  case UserFun(K, V) of
+                      ok ->
+                          {Total + 1, Failed};
+
+                      {ok, _} ->
+                          {Total + 1, Failed};
+
+                      _ ->
+                          {Total, Failed + 1}
+                  end
+
+          end, {0, 0}).
 
 subscribe(Pid) ->
     case lists:member(Pid, observers()) of

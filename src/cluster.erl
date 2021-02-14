@@ -3,7 +3,7 @@
 -export([members/0, start/0, join/1, state/0, state/1, neighbours/0, leader/0,
          is_leader/0, http_port/0, size/0, service/0, namespace/0, join/0, leave/1, env/1,
          set_recovery/1, recovery/0, notify_observers/1, notify_local_observers/1, subscribe/1,
-         observers/0, host/0, host/1, hosts/1, node/1]).
+         observers/0, host/0, host/1, hosts/1, node/1, is_disconnecting/0]).
 
 
 state() ->
@@ -92,7 +92,7 @@ join(Nodes) ->
     [net_adm:ping(N) || N <- Nodes].
 
 leave(normal) ->
-    rpc:eval_everywhere(erlang, disconnect_node, [node()]),
+    cluster_monitor:disconnect(),
     ok;
 leave(halt) ->
     erlang:halt().
@@ -151,3 +151,7 @@ node(Host) ->
         _:_ ->
             unknown
     end.
+
+is_disconnecting() ->
+    #{ disconnecting := Disconnecting } = cluster_monitor:info(),
+    Disconnecting.
