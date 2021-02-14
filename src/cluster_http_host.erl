@@ -20,8 +20,8 @@ host(join, Node, _, Req) ->
     Info = cluster_http_info:info(),
     cluster_http:ok(Info, Req);
 host(leave, _, _, Req) ->
-    cluster:leave(normal),
-    lager:notice("CLUSTER nodes after leaving cluster: ~p", [nodes()]),
+    {ok, Nodes} = cluster_monitor:disconnect(),
+    lager:notice("CLUSTER nodes after command to leave cluster: ~p", [Nodes]),
     Info = cluster_http_info:info(),
     cluster_http:ok(Info, Req);
 host(halt, Node, _, Req) ->
