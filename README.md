@@ -8,7 +8,7 @@ system running inside Kubernetes using **statefulsets**.
 Add this dependency to your `rebar3.config`:
 
 ```
-{cluster, {git, "https://github.com/pedro-gutierrez/cluster", {tag, "0.1.0"}
+{cluster, {git, "https://github.com/pedro-gutierrez/cluster", {branch, "master"}
 ```
 
 Then make sure the `cluster` app is part of your release.
