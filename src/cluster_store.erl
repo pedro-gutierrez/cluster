@@ -104,17 +104,17 @@ init_store(true, _) ->
     end;
 init_store(false, green) ->
     lager:notice("CLUSTER store adding table copy"),
-
     case mnesia:add_table_copy(cluster_items, node(), ram_copies) of 
-        {aborted,{already_exists, _, _ }} ->
+        {aborted,{already_exists, _}} ->
             ok;
-        {aborted,{no_exists, _, _}} ->
+        {aborted,{no_exists, _}} ->
             lager:notice("CLUSTER STORE follower is joining, but store is not initialized yet"),
             init_store(true, green);
         ok ->
             ok
     end,
-    notify_local_observers(joined);
+    notify_local_observers(joined),
+    ok;
 init_store(_, _) ->
     ok.
 

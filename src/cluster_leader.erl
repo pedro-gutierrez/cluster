@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+-export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, handle_continue/2, terminate/2,
          code_change/3]).
 -export([attempt_leader/0]).
 
@@ -11,8 +11,11 @@ start_link() ->
 
 init(_) ->
     ok = pg2:join(cluster_events, self()),
+    {ok, #{}, {continue, attempt_leader}}.
+
+handle_continue(attempt_leader, State) ->
     attempt_leader(),
-    {ok, []}.
+    {noreply, State}.
 
 handle_info({cluster, nodes_changed}, State) ->
     attempt_leader(),
@@ -44,6 +47,7 @@ attempt_leader(false) ->
         no ->
             Pid = global:whereis_name(cluster_leader),
             lager:notice("CLUSTER existing leader remains ~p", [node(Pid)])
-    end;
+    end,
+    ok;
 attempt_leader(true) ->
     ok.
